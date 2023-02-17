@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Define the email recipient and sender
+TO_EMAIL="recipient@example.com"
+FROM_EMAIL="sender@example.com"
+
+# Define the servers to check
+SERVERS=("server1" "server2" "server3")
+
+# Loop through the servers and check disk space and RStudio services status
+for server in "${SERVERS[@]}"
+do
+    # Check disk space
+    df_output=$(ssh $server "df -h")
+    while read -r line; do
+        if [[ $line == *"/dev"* ]]; then
+            disk=$(echo $line | awk '{print $1}')
+            used_space=$(echo $line | awk '{print $5}' | sed 's/%//')
+            if [ $used_space -gt 90 ]; then
+                disk_status="$server: $disk not ok"
+                echo $disk_status
+            else
+                disk_status="$server: $disk ok"
+                echo $disk_status
+            fi
+        fi
+    done <<< "$df_output"
+
+    # Check RStudio services status
+    rstudio_output=$(ssh $server "systemctl status rstudio-server")
+    if [[ $rstudio_output == *"active (running)"* ]]; then
+        rstudio_status="$server: ok"
+    else
+        rstudio_status="$server: not ok"
+    fi
+    
+    # Print the results
+    echo "RStudio services: $rstudio_status"
+done
+
+# Send the final results via email
+results=$(echo -e "Disk space:\n$disk_status\n\nRStudio services:\n$rstudio_status")
+echo -e "$results" | mail -s "Server Status Report" -r "$FROM_EMAIL" "$TO_EMAIL"
